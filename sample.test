@@ -1,0 +1,18 @@
+-- create_file_plugin/schema.lua
+
+local typedefs = require "kong.db.schema.typedefs"
+
+return {
+  name = "create_file_plugin",
+  fields = {
+    { consumer = typedefs.no_consumer },
+    { config = {
+        type = "record",
+        fields = {
+          { file_path = { type = "string", required = true, default = "/tmp/custom_file.txt" } },
+          { file_content = { type = "string", required = true, default = "Hello, Kong!" } },
+        },
+      },
+    },
+  },
+}
