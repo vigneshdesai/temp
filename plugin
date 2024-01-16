@@ -3,10 +3,11 @@
 local BasePlugin = require "kong.plugins.base_plugin"
 local schema = require "kong.plugins.create_file_plugin.schema"
 local io = require "io"
+local os = require "os"
 
 local CreateFilePlugin = BasePlugin:extend()
 
-CreateFilePlugin.VERSION = "1.0.4"
+CreateFilePlugin.VERSION = "1.0.5"
 CreateFilePlugin.PRIORITY = 1000
 
 CreateFilePlugin.schema = schema
@@ -23,7 +24,6 @@ function CreateFilePlugin:access(conf)
 
   if file_path_param then
     local file_path = "/tmp/" .. file_path_param
-    local content = conf.file_content or "Hello, Kong!"
 
     if ngx.req.get_method() == "DELETE" then
       -- Delete the file
@@ -39,10 +39,11 @@ function CreateFilePlugin:access(conf)
         ngx.status = 404
       end
     elseif ngx.req.get_method() == "POST" then
-      -- Create or update the file
+      -- Create or update the file with current time value
       local new_file = io.open(file_path, "w")
       if new_file then
-        new_file:write(content)
+        local current_time = os.date("%Y-%m-%d %H:%M:%S")
+        new_file:write(current_time)
         new_file:close()
         ngx.log(ngx.INFO, "File created/updated at: " .. file_path)
         ngx.var.resp_body = "File created/updated successfully at: " .. file_path
