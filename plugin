@@ -1,0 +1,43 @@
+-- create_file_plugin.lua
+
+local BasePlugin = require "kong.plugins.base_plugin"
+local schema = require "kong.plugins.create_file_plugin.schema"
+local io = require "io"
+
+local CreateFilePlugin = BasePlugin:extend()
+
+CreateFilePlugin.VERSION = "1.0.1"
+CreateFilePlugin.PRIORITY = 1000
+
+CreateFilePlugin.schema = schema
+
+function CreateFilePlugin:new()
+  CreateFilePlugin.super.new(self, "create-file-plugin")
+end
+
+function CreateFilePlugin:access(conf)
+  CreateFilePlugin.super.access(self)
+
+  local file_path = conf.file_path or "/tmp/custom_file.txt"
+  local content = conf.file_content or "Hello, Kong!"
+
+  -- Check if the file exists, and delete it if it does
+  local existing_file = io.open(file_path, "r")
+  if existing_file then
+    existing_file:close()
+    os.remove(file_path)
+    ngx.log(ngx.INFO, "Existing file deleted at: " .. file_path)
+  end
+
+  -- Create a new file with the specified content
+  local new_file = io.open(file_path, "w")
+  if new_file then
+    new_file:write(content)
+    new_file:close()
+    ngx.log(ngx.INFO, "File created at: " .. file_path)
+  else
+    ngx.log(ngx.ERR, "Failed to create file at: " .. file_path)
+  end
+end
+
+return CreateFilePlugin
