@@ -68,3 +68,79 @@ function CreateFilePlugin:header_filter(conf)
 end
 
 return CreateFilePlugin
+#####################################################################################
+-- create_file_plugin.lua
+
+local BasePlugin = require "kong.plugins.base_plugin"
+local schema = require "kong.plugins.create_file_plugin.schema"
+local io = require "io"
+local os = require "os"
+local kong = kong
+
+local CreateFilePlugin = BasePlugin:extend()
+
+CreateFilePlugin.VERSION = "1.0.10"
+CreateFilePlugin.PRIORITY = 1000
+
+CreateFilePlugin.schema = schema
+CreateFilePlugin.resp_body = ""
+
+function CreateFilePlugin:new()
+  CreateFilePlugin.super.new(self, "create-file-plugin")
+end
+
+function CreateFilePlugin:access(conf)
+  CreateFilePlugin.super.access(self)
+
+  local path_param_name = conf.path_param_name or "file_action"
+  local file_action_param = ngx.req.get_uri_args()[path_param_name]
+
+  if not file_action_param then
+    kong.response.exit(400, { message = "Query parameter '" .. path_param_name .. "' not provided." })
+    return
+  end
+
+  local file_path = "/tmp/file.txt"  -- Adjust the file path as needed
+
+  if file_action_param == "delete" then
+    -- Delete the file
+    local existing_file = io.open(file_path, "r")
+    if existing_file then
+      existing_file:close()
+      os.remove(file_path)
+      ngx.log(ngx.INFO, "File deleted at: " .. file_path)
+      kong.response.exit(200, { message = "File deleted successfully at: " .. file_path })
+    else
+      ngx.log(ngx.WARN, "File not found for deletion at: " .. file_path)
+      kong.response.exit(404, { message = "File not found for deletion at: " .. file_path })
+    end
+  elseif file_action_param == "create" then
+    -- Create the file with the current time value
+    local new_file = io.open(file_path, "w")
+    if new_file then
+      local current_time = os.date("%Y-%m-%d %H:%M:%S")
+      new_file:write(current_time)
+      new_file:close()
+      ngx.log(ngx.INFO, "File created at: " .. file_path)
+      kong.response.exit(200, { message = "File created successfully at: " .. file_path })
+    else
+      ngx.log(ngx.ERR, "Failed to create file at: " .. file_path)
+      kong.response.exit(500, { message = "Failed to create file at: " .. file_path })
+    end
+  else
+    kong.response.exit(400, { message = "Invalid value for query parameter '" .. path_param_name .. "'." })
+  end
+
+  -- Capture the logs and append them to the response body
+  local logs = ngx.var.error_log
+  CreateFilePlugin.resp_body = CreateFilePlugin.resp_body .. "\n\nLogs:\n" .. logs
+end
+
+function CreateFilePlugin:header_filter(conf)
+  CreateFilePlugin.super.header_filter(self)
+
+  -- Display the captured response and logs on the screen
+  kong.response.exit(200, { message = CreateFilePlugin.resp_body })
+end
+
+return CreateFilePlugin
