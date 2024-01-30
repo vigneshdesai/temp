@@ -1,18 +1,12 @@
--- create_file_plugin/schema.lua
-
-local typedefs = require "kong.db.schema.typedefs"
+-- create_file_plugin_schema.lua
 
 return {
-  name = "create_file_plugin",
+  no_consumer = true,
   fields = {
-    { consumer = typedefs.no_consumer },
-    { config = {
-        type = "record",
-        fields = {
-          { file_path = { type = "string", required = true, default = "/tmp/custom_file.txt" } },
-          { file_content = { type = "string", required = true, default = "Hello, Kong!" } },
-        },
-      },
-    },
+    path_param_name = { type = "string", default = "file_action" }
   },
+  self_check = function(schema, plugin_t, dao, is_update)
+    -- Add any additional validation logic here if needed
+    return true
+  end
 }
