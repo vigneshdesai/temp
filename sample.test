@@ -10,3 +10,26 @@ return {
     return true
   end
 }
+
+
+<#assign path = "/your/directory/path/abc123def456ghi789jkl012mno345">
+<#assign delimiter = "/">
+
+<#-- Split the path by the delimiter -->
+<#assign parts = path?split(delimiter)>
+
+<#-- Get the last part of the split path -->
+<#assign last_part = parts[parts?size - 1]>
+
+<#-- Check if the last part matches the 32-alphanumeric pattern -->
+<#if last_part?matches(".*?([a-zA-Z0-9]{32})")>
+
+    <#-- Extract the alphanumeric string using a regular expression -->
+    <#assign alphanumeric_string = last_part?matches(".*?([a-zA-Z0-9]{32})")[1]>
+    
+    Alphanumeric String: ${alphanumeric_string}
+    
+<#else>
+    <#-- Handle the case when the input string doesn't match the pattern -->
+    Default Value or Handling for Invalid Input
+</#if>
