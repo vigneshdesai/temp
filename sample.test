@@ -33,3 +33,33 @@ return {
     <#-- Handle the case when the input string doesn't match the pattern -->
     Default Value or Handling for Invalid Input
 </#if>
+
+
+
+==========
+<#-- Custom function to compute SHA-1 hash -->
+<#function sha1(inputString)>
+    <#assign sha1 = ""?bytes>
+    <#attempt>
+        <#assign sha1 = inputString?bytes("UTF-8")?sha1>
+    <#recover>
+        <#-- Handle exception if inputString is not a valid UTF-8 string -->
+    </#attempt>
+    <#return sha1?hex>
+</#function>
+
+<#assign inputString = "example/path/to/resource/32alphanumericstring12345678">
+<#assign parts = inputString?split("/")>
+<#assign lastPart = parts?last>
+
+<#-- Check if the last part matches the alphanumeric pattern -->
+<#if lastPart?matches("^[A-Za-z0-9]{32}$")>
+    <#-- Last part is a 32-bit alphanumeric string -->
+    <#assign alphanumericString = lastPart>
+    The last 32-bit alphanumeric string after "/" is: ${alphanumericString}
+    <#-- Compute SHA-1 hash of the alphanumeric string -->
+    <#assign sha1Hash = sha1(alphanumericString)>
+    SHA-1 hash of the alphanumeric string: ${sha1Hash}
+<#else>
+    The input string does not contain a 32-bit alphanumeric string after "/"
+</#if>
