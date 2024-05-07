@@ -1,3 +1,5 @@
+
+char?replace("\\", "\\\\").?replace("\"", "\\\"")?eval?hex
 -- create_file_plugin_schema.lua
 
 return {
