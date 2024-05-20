@@ -1,4 +1,49 @@
 
+
+#!/bin/bash
+
+# Define the input file
+input_file="input.txt"
+
+# Function to calculate MD5 hash and replace the string
+replace_md5() {
+  local input="$1"
+  local prefix="MD5_"
+  
+  # Find all occurrences of MD5_<text> in the input
+  while [[ $input =~ (MD5_[a-zA-Z0-9_]+) ]]; do
+    full_match="${BASH_REMATCH[1]}"
+    text_to_hash="${full_match#$prefix}"
+    
+    # Calculate MD5 hash
+    md5_value=$(echo -n "$text_to_hash" | md5sum | awk '{print $1}')
+    
+    # Replace the MD5_<text> with the MD5 value in the input
+    input="${input//$full_match/$md5_value}"
+  done
+  
+  echo "$input"
+}
+
+# Check if the input file exists
+if [ ! -f "$input_file" ]; then
+  echo "Input file '$input_file' not found!"
+  exit 1
+fi
+
+# Read the input file line by line
+while IFS= read -r line; do
+  # Replace MD5_<text> with its MD5 hash in the current line
+  updated_line=$(replace_md5 "$line")
+  echo "$updated_line"
+done < "$input_file"
+
+
+
+
+
+
+
 char?replace("\\", "\\\\").?replace("\"", "\\\"")?eval?hex
 -- create_file_plugin_schema.lua
 
