@@ -1,5 +1,21 @@
 
 
+<VirtualHost *:80>
+    ServerName www.yourdomain.com
+
+    <Location /your-endpoint>
+        Require all denied
+        ErrorDocument 401 "Unauthorized access"
+        AuthType Basic
+        AuthName "Restricted Area"
+        AuthUserFile /dev/null
+    </Location>
+
+    # Other configurations for the virtual host
+</VirtualHost>
+
+
+
 #!/bin/bash
 
 # Define the input file
