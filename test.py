@@ -12,6 +12,24 @@ if __name__ == '__main__':
 
 
 
+import subprocess
+import pkg_resources
+import os
+
+def run_script(script_name):
+    script_path = pkg_resources.resource_filename('your_module', f'scripts/{script_name}')
+    if os.path.exists(script_path):
+        subprocess.run([script_path], check=True)
+    else:
+        raise FileNotFoundError(f"Script {script_name} not found!")
+
+# Example usage:
+run_script('script1.sh')
+
+
+
+
+
 
 from flask import Flask, request, jsonify
 import os
