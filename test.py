@@ -9,7 +9,7 @@ def hello():
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000)
 
-
+CustomLog "|/usr/bin/tee -a /var/log/apache2/report-uri-logs/report.log" "{ \"time\": \"%{%Y-%m-%d %H:%M:%S}t\", \"client\": \"%h\", \"post_body\": \"%{POST_BODY}e\" }"
 
 
 import subprocess
