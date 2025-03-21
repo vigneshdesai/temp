@@ -1,4 +1,17 @@
 
+Apache ErrorDocument Condition	Kong Equivalent
+Custom 404 Error Page	request-termination Plugin
+Custom 500 Error Page	response-transformer Plugin
+Custom 403 Forbidden Page	request-termination Plugin
+
+
+
+Apache SetEnvIf Condition	Kong Equivalent
+Set environment variable based on User-Agent	request-transformer Plugin
+Allow/Block access based on IP (Remote_Addr)	ip-restriction Plugin
+Match requests based on method (Request_Method)	Route filtering (methods[])
+Set custom headers (Header set)	request-transformer Plugin
+
 
 <VirtualHost *:80>
     ServerName www.yourdomain.com
