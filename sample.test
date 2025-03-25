@@ -1,4 +1,163 @@
 
+import yaml
+import re
+
+# Sample Apache VirtualHost Configuration
+apache_config = """
+<VirtualHost *:80>
+    ServerName example.com
+    ProxyPass "/api/" "http://backend.local/"
+    ProxyPassReverse "/api/" "http://backend.local/"
+
+    RewriteCond %{HTTP_HOST} ^old.example.com$ [NC]
+    RewriteRule "^/old-path$" "/new-path" [R=301,L,NC]
+
+    <Location "/secure">
+        Require valid-user
+        AuthType Basic
+    </Location>
+
+    <LocationMatch "^/admin/.*">
+        Require valid-user
+    </LocationMatch>
+
+    Header set X-Frame-Options "DENY"
+    Alias /static/ "/var/www/html/"
+</VirtualHost>
+"""
+
+def parse_apache_config(config):
+    services = []
+    plugins = []
+    routes = []
+
+    # Extract ServerName
+    server_name_match = re.search(r'ServerName\s+(\S+)', config)
+    server_name = server_name_match.group(1) if server_name_match else "default_service"
+
+    # Extract ProxyPass rules
+    proxy_matches = re.findall(r'ProxyPass\s+"([^"]+)"\s+"([^"]+)"', config)
+    for path, backend in proxy_matches:
+        services.append({
+            "name": f"{server_name}_service",
+            "url": backend,
+            "routes": [
+                {
+                    "name": f"{server_name}_route",
+                    "paths": [path.rstrip('/')],
+                    "strip_path": False
+                }
+            ]
+        })
+
+    # Extract RewriteCond and RewriteRule (301 Redirects)
+    rewrite_cond_match = re.search(r'RewriteCond\s+\%\{HTTP_HOST\}\s+\^([^\$]+)\$\s+\[NC\]', config, re.IGNORECASE)
+    rewrite_host = rewrite_cond_match.group(1) if rewrite_cond_match else None
+
+    rewrite_matches = re.findall(r'RewriteRule\s+"([^"]+)"\s+"([^"]+)"\s+\[R=(\d+),?(NC)?,?(L)?\]', config, re.IGNORECASE)
+    for old_path, new_path, status, nc_flag, l_flag in rewrite_matches:
+        redirect_rule = {
+            "name": "request-transformer",
+            "config": {
+                "add": {
+                    "headers": {"Location": new_path}
+                },
+                "http_method": status
+            }
+        }
+        if rewrite_host:
+            redirect_rule["config"]["add"]["headers"]["Host"] = rewrite_host
+        if nc_flag:
+            redirect_rule["config"]["add"]["headers"]["X-Case-Insensitive"] = "true"  # Custom handling for NC
+        if l_flag:
+            redirect_rule["config"]["add"]["headers"]["X-Last-Rule"] = "true"  # Custom handling for L
+        plugins.append(redirect_rule)
+
+    # Extract <Location> Authentication
+    location_matches = re.findall(r'<Location\s+"([^"]+)">\s+Require valid-user\s+AuthType Basic\s+</Location>', config)
+    for loc in location_matches:
+        services.append({
+            "name": f"{server_name}_secure_service",
+            "url": f"http://backend.local{loc}",
+            "routes": [
+                {
+                    "name": f"{server_name}_secure_route",
+                    "paths": [loc.rstrip('/')],
+                    "strip_path": False,
+                    "plugins": [
+                        {"name": "acl", "config": {"allow": ["authenticated"]}},
+                        {"name": "basic-auth"}
+                    ]
+                }
+            ]
+        })
+
+    # Extract <LocationMatch> Authentication (Regex Routing)
+    location_match = re.findall(r'<LocationMatch\s+"([^"]+)">\s+Require valid-user\s+</LocationMatch>', config)
+    for loc in location_match:
+        routes.append({
+            "name": f"{server_name}_admin_route",
+            "paths": [],
+            "strip_path": False,
+            "regex_priority": 10,
+            "headers": {"Host": [server_name]},
+            "methods": ["GET", "POST"],
+            "plugins": [
+                {"name": "acl", "config": {"allow": ["authenticated"]}},
+                {"name": "basic-auth"}
+            ]
+        })
+
+    # Extract Headers (Response Modifications)
+    header_matches = re.findall(r'Header\s+set\s+(\S+)\s+"([^"]+)"', config)
+    for header, value in header_matches:
+        plugins.append({
+            "name": "response-transformer",
+            "config": {
+                "add": {
+                    "headers": {header: value}
+                }
+            }
+        })
+
+    # Extract Alias (Static File Serving)
+    alias_matches = re.findall(r'Alias\s+(\S+)\s+"([^"]+)"', config)
+    for path, directory in alias_matches:
+        services.append({
+            "name": f"{server_name}_static_service",
+            "url": f"file://{directory}",
+            "routes": [
+                {
+                    "name": f"{server_name}_static_route",
+                    "paths": [path.rstrip('/')],
+                    "strip_path": False
+                }
+            ]
+        })
+
+    return {"_format_version": "3.0", "services": services, "routes": routes, "plugins": plugins}
+
+# Convert Apache to Kong YAML
+kong_config = parse_apache_config(apache_config)
+
+# Write to kong.yml
+with open("kong.yml", "w") as file:
+    yaml.dump(kong_config, file, default_flow_style=False)
+
+print("✅ Kong declarative config generated: kong.yml")
+
+
+
+
+
+
+
+
+
+
+
+
+
 Apache ErrorDocument Condition	Kong Equivalent
 Custom 404 Error Page	request-termination Plugin
 Custom 500 Error Page	response-transformer Plugin
