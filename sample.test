@@ -1,4 +1,189 @@
+import yaml
+import re
 
+apache_config = """
+<VirtualHost *:80>
+    ServerName example.com
+    ProxyPass "/api/" "http://backend.local/"
+    ProxyPassReverse "/api/" "http://backend.local/"
+
+    RewriteCond %{HTTPS} !=on
+    RewriteRule ^(.*)$ https://example.com/$1 [R=301,L]
+
+    RewriteRule "^/old-path$" "/new-path" [R=302,L,NC]
+    RewriteRule "^/proxy-me$" "http://backend.local/proxy" [P,L]
+    RewriteRule "^/internal$" "/hidden" [L]
+    RewriteRule "^/append-query$" "/target?new=true" [QSA,L]
+
+    <Location "/secure">
+        Require valid-user
+        AuthType Basic
+    </Location>
+
+    <LocationMatch "^/admin/.*">
+        Require valid-user
+    </LocationMatch>
+
+    Header set X-Frame-Options "DENY"
+    Alias /static/ "/var/www/html/"
+</VirtualHost>
+"""
+
+def parse_apache_config(config):
+    services = []
+    plugins = []
+    routes = []
+    
+    clean_config = "\n".join(line for line in config.split("\n") if not line.strip().startswith("#"))
+
+    server_name_match = re.search(r'ServerName\s+(\S+)', clean_config)
+    server_name = server_name_match.group(1) if server_name_match else "default_service"
+
+    proxy_matches = re.findall(r'ProxyPass\s+"([^"]+)"\s+"([^"]+)"', clean_config)
+    for path, backend in proxy_matches:
+        services.append({
+            "name": f"{server_name}_service",
+            "url": backend,
+            "routes": [
+                {
+                    "name": f"{server_name}_route",
+                    "paths": [path.rstrip('/')],
+                    "strip_path": False
+                }
+            ]
+        })
+
+    https_redirect = re.search(r'RewriteCond\s+\%\{HTTPS\}\s+!=on\s+RewriteRule\s+\^\(\.\*\)\$\s+(https:\/\/[^\s]+)\s+\[R=301,L\]', clean_config)
+    if https_redirect:
+        plugins.append({
+            "name": "request-transformer",
+            "config": {
+                "add": {
+                    "headers": {"Location": https_redirect.group(1)}
+                },
+                "http_method": "301"
+            }
+        })
+
+    rewrite_matches = re.findall(r'RewriteRule\s+"([^"]+)"\s+"([^"]+)"\s*\[?([^\]]*)\]?', clean_config)
+    for old_path, new_path, flags in rewrite_matches:
+        flag_set = flags.split(",") if flags else []
+        rule_type = "rewrite"
+        query_string_append = "QSA" in flag_set
+        case_insensitive = "NC" in flag_set
+        last_rule = "L" in flag_set
+
+        if "R=301" in flag_set:
+            rule_type = "redirect"
+            http_status = "301"
+        elif "R=302" in flag_set:
+            rule_type = "redirect"
+            http_status = "302"
+        elif "P" in flag_set:
+            rule_type = "proxy"
+
+        route = {
+            "name": f"{server_name}_{old_path.replace('/', '_')}_route",
+            "paths": [old_path.rstrip('/')],
+            "strip_path": False
+        }
+
+        if case_insensitive:
+            route["headers"] = {"X-Case-Insensitive": "true"}
+        if last_rule:
+            route["headers"] = {"X-Last-Rule": "true"}
+
+        if rule_type == "redirect":
+            plugins.append({
+                "name": "request-transformer",
+                "config": {
+                    "add": {
+                        "headers": {"Location": new_path}
+                    },
+                    "http_method": http_status
+                }
+            })
+        elif rule_type == "proxy":
+            services.append({
+                "name": f"{server_name}_proxy_service",
+                "url": new_path,
+                "routes": [route]
+            })
+        else:
+            if query_string_append:
+                new_path += "?new=true"
+            routes.append(route)
+
+    location_matches = re.findall(r'<Location\s+"([^"]+)">\s+Require valid-user\s+AuthType Basic\s+</Location>', clean_config)
+    for loc in location_matches:
+        services.append({
+            "name": f"{server_name}_secure_service",
+            "url": f"http://backend.local{loc}",
+            "routes": [
+                {
+                    "name": f"{server_name}_secure_route",
+                    "paths": [loc.rstrip('/')],
+                    "strip_path": False,
+                    "plugins": [
+                        {"name": "acl", "config": {"allow": ["authenticated"]}},
+                        {"name": "basic-auth"}
+                    ]
+                }
+            ]
+        })
+
+    location_match = re.findall(r'<LocationMatch\s+"([^"]+)">\s+Require valid-user\s+</LocationMatch>', clean_config)
+    for loc in location_match:
+        routes.append({
+            "name": f"{server_name}_admin_route",
+            "paths": [],
+            "strip_path": False,
+            "regex_priority": 10,
+            "headers": {"Host": [server_name]},
+            "methods": ["GET", "POST"],
+            "plugins": [
+                {"name": "acl", "config": {"allow": ["authenticated"]}},
+                {"name": "basic-auth"}
+            ]
+        })
+
+    header_matches = re.findall(r'Header\s+set\s+(\S+)\s+"([^"]+)"', clean_config)
+    for header, value in header_matches:
+        plugins.append({
+            "name": "response-transformer",
+            "config": {
+                "add": {
+                    "headers": {header: value}
+                }
+            }
+        })
+
+    alias_matches = re.findall(r'Alias\s+(\S+)\s+"([^"]+)"', clean_config)
+    for path, directory in alias_matches:
+        services.append({
+            "name": f"{server_name}_static_service",
+            "url": f"file://{directory}",
+            "routes": [
+                {
+                    "name": f"{server_name}_static_route",
+                    "paths": [path.rstrip('/')],
+                    "strip_path": False
+                }
+            ]
+        })
+
+    return {"_format_version": "3.0", "services": services, "routes": routes, "plugins": plugins}
+
+kong_config = parse_apache_config(apache_config)
+
+with open("kong.yml", "w") as file:
+    yaml.dump(kong_config, file, default_flow_style=False)
+
+print("✅ Kong declarative config generated: kong.yml")
+
+
+
+========================
 import yaml
 import re
 
